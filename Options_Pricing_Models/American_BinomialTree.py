@@ -7,7 +7,6 @@ Created on Wed Jul 10 09:24:56 2024
 
 # import packages
 import numpy as np
-import pandas as pd
 
 # class for a Binomial Tree - American Style Stock Option - price estimation
 class BinomialTreeAmerOption:
@@ -68,68 +67,97 @@ option_type = 'put'
 option = BinomialTreeAmerOption(S0, K, T, r, sigma, N, option_type)
 option_price = option.price()
 
-print(f"American Option Binomial Tree Estimation: ${option_price:.2f}")
+print(f"American Option Binomial Tree Estimation:   ${option_price:.2f}")
 
 #%%
 
-# for pricing a real options contract
+# Pricing an Options Contract By Ticker
 
 import yfinance as yf
 from datetime import datetime
 
-ticker = "TSLA"
-exp_date = '2025-06-20'
-strike_price = 240
-option_type = 'call'
-
-tk  = yf.Ticker(ticker)
-
-# get stock price
-last_stock_price = tk.history(period='1d')['Close'].iloc[-1]
-
-# get options contract data
-exps = tk.options
-option_chain = tk.option_chain(exp_date)
-calls = option_chain.calls
-puts = option_chain.puts
-
-if option_type == 'call':
-    specific_contract = calls[calls['strike'] == strike_price]
-else:
-    specific_contract = puts[puts['strike'] == strike_price]
-
-if not specific_contract.empty:
-    contract_metrics = specific_contract.iloc[0]
+def parse_option_contract(contract_name):
+    # Extract ticker symbol (assumes ticker is the first part and is alphabetic)
+    ticker = ''.join([char for char in contract_name if char.isalpha()])
+    ticker = ticker[:-1] # Remove C/P
     
-volatility = contract_metrics['impliedVolatility']
-lastPrice = contract_metrics['lastPrice']
+    # Extract expiration date (assumes it's the 6 digits following the ticker)
+    date_start = len(ticker)
+    exp_date = contract_name[date_start:date_start + 6]
+    exp_date = datetime.strptime(exp_date, '%y%m%d').strftime('%Y-%m-%d')
     
-# get time to expiry (years)
-time_to_expiry = datetime.fromisoformat(exp_date) - datetime.today()
-time_to_expiry = time_to_expiry.days/365
-
-# get T-bill rate (use 1 year)
-treasury_ticker = yf.Ticker('^IRX')
-treasury_data = treasury_ticker.history(period='1d')
-treasury_rate = last_treasury_rate = treasury_data['Close'].iloc[-1]
-treasury_rate = treasury_rate/100
-
-S0 = last_stock_price
-K = strike_price
-T = time_to_expiry
-r = treasury_rate
-sigma = volatility
-N = 2000
-option_type = option_type
-
-bt_option = BinomialTreeAmerOption(S0, K, T, r, sigma, N, option_type)
-bt_option_price = bt_option.price()
-
-print(f"American Option Binomial Tree Estimation:   ${bt_option_price:.2f}")
-print(f"Last Contract Price:                        ${lastPrice:.2f}")
+    # Extract option type (the character following the date)
+    option_type = contract_name[date_start + 6]
+    
+    # Extract strike price (the rest of the contract name)
+    strike_price = contract_name[date_start + 7:]
+    strike_price = float(strike_price) / 1000
+    
+    return {
+        'ticker': ticker,
+        'exp_date': exp_date,
+        'strike_price': strike_price,
+        'option_type': 'call' if option_type == 'C' else 'put'
+    }
 
 
+def AmericanBinomialTree(contract_name, N):	
+    
+    parsed_data = parse_option_contract(contract_name)
+    
+    ticker = parsed_data['ticker']
+    exp_date = parsed_data['exp_date']
+    strike_price = parsed_data['strike_price']
+    option_type = parsed_data['option_type']
 
+    tk = yf.Ticker(ticker)
+    
+    # get stock price
+    last_stock_price = tk.history(period='1d')['Close'].iloc[-1]
+    
+    # get options contract data
+    option_chain = tk.option_chain(exp_date)
+    calls = option_chain.calls
+    puts = option_chain.puts
+    
+    if option_type == 'call':
+        specific_contract = calls[calls['strike'] == strike_price]
+    else:
+        specific_contract = puts[puts['strike'] == strike_price]
+    
+    if not specific_contract.empty:
+        contract_metrics = specific_contract.iloc[0]
+        
+    volatility = contract_metrics['impliedVolatility']
+        
+    # get time to expiry (years)
+    time_to_expiry = datetime.fromisoformat(exp_date) - datetime.today()
+    time_to_expiry = (time_to_expiry.days + 1)/365
+    
+    # get T-bill rate (use 1 year)
+    treasury_ticker = yf.Ticker('^IRX')
+    treasury_data = treasury_ticker.history(period='1d')
+    treasury_rate = treasury_data['Close'].iloc[-1]
+    treasury_rate = treasury_rate/100
+
+    S0 = last_stock_price
+    K = strike_price
+    T = time_to_expiry
+    r = treasury_rate
+    sigma = volatility
+    option_type = option_type
+    
+    bta_option = BinomialTreeAmerOption(S0, K, T, r, sigma, N, option_type)
+    return bta_option.price()
+
+
+# Example usage
+N = 1000 # iterations
+Option_Ticker = 'TSLA260618P00400000'
+
+contract_price = AmericanBinomialTree(Option_Ticker, N)
+
+print(f"{Option_Ticker} American Binomial Tree Price Estimation:            ${contract_price:.2f}")
 
 
 
